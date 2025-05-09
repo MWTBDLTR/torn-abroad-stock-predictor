@@ -10,7 +10,7 @@
   ],
   "background": {
     "scripts": [
-      "background.js"
+      "tornstocklogger.js"
     ]
   },
   "browser_action": {
