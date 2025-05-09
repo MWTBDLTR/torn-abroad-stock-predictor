@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    html, body {
+      width: 480px;
+      height: 600px;
+      overflow-x: hidden;
+      overflow-y: auto;
+      font-family: sans-serif;
+      background: #1c1c1c;
+      color: white;
+      margin: 0;
+      padding: 10px;
+      font-size: 13px;
+      position: relative;
+    }
+    .item {
+      margin-bottom: 10px;
+      border-bottom: 1px solid #444;
+      padding-bottom: 6px;
+      word-wrap: break-word;
+    }
+    .country-block {
+      margin-bottom: 20px;
+    }
+    h4 {
+      margin: 0 0 6px 0;
+      font-size: 16px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .top-item {
+      background-color: #ffd700;
+      color: #000;
+      font-weight: bold;
+      padding: 4px;
+      border-radius: 4px;
+    }
+    .config {
+      margin-bottom: 10px;
+    }
+    .config-form {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      padding-right: 20px;
+    }
+    .config input {
+      flex: 1;
+      padding: 5px;
+      font-size: 12px;
+    }
+    .config button {
+      padding: 5px 10px;
+      font-size: 12px;
+      background: #4caf50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .reset-key {
+      position: absolute;
+      bottom: 10px;
+      right: 20px;
+      font-size: 11px;
+      color: #ccc;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .country-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+    .country-filters label {
+      background: #2a2a2a;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+    #key-status {
+      font-size: 11px;
+      color: #ccc;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h3>Foreign Stock Predictions</h3>
+  <div class="config">
+    <div class="config-form">
+      <input type="text" id="apikey" placeholder="API key" />
+      <button id="submit-key">Save</button>
+    </div>
+    <div id="key-status">API key not validated yet.</div>
+  </div>
+  <div id="filter" class="country-filters"></div>
+  <button id="refresh" style="margin-bottom: 10px;">Refresh Market Prices</button><div id="content">Loading...</div>
+  <div class="reset-key" id="reset-key">Reset API Key</div>
+  <script src="popup.js"></script>
+</body>
+</html>
