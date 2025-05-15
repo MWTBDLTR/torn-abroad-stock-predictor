@@ -44,25 +44,94 @@ const validator = {
     }
 };
 
-// Opens (or creates) the IndexedDB database 'TornStockLogger' version 1
+// Enhanced API response validation
+const apiValidator = {
+    validateYataResponse(data) {
+        if (!data || typeof data !== 'object') {
+            throw new Error('Invalid YATA API response format');
+        }
+        
+        if (!data.stocks || typeof data.stocks !== 'object') {
+            throw new Error('Missing or invalid stocks data in YATA response');
+        }
+        
+        if (!data.timestamp || typeof data.timestamp !== 'number') {
+            throw new Error('Missing or invalid timestamp in YATA response');
+        }
+        
+        // Validate each country's data
+        Object.entries(data.stocks).forEach(([country, countryData]) => {
+            if (!countryData.stocks || !Array.isArray(countryData.stocks)) {
+                throw new Error(`Invalid stock data format for country: ${country}`);
+            }
+            
+            countryData.stocks.forEach(item => {
+                if (!item.id || !item.name || typeof item.quantity === 'undefined') {
+                    throw new Error(`Invalid item data in country ${country}: ${JSON.stringify(item)}`);
+                }
+            });
+        });
+        
+        return true;
+    },
+
+    validateTornMarketResponse(data, itemId) {
+        if (!data || typeof data !== 'object') {
+            throw new Error(`Invalid Torn API response for item ${itemId}`);
+        }
+
+        if (data.error) {
+            throw new Error(`Torn API error: ${data.error.error}`);
+        }
+
+        if (!data.itemmarket || typeof data.itemmarket !== 'object') {
+            throw new Error(`Missing or invalid itemmarket data for item ${itemId}`);
+        }
+
+        const { item, listings } = data.itemmarket;
+        
+        if (!item || !item.type || !Array.isArray(listings)) {
+            throw new Error(`Invalid market data structure for item ${itemId}`);
+        }
+
+        return true;
+    }
+};
+
+// Opens (or creates) the IndexedDB database 'TornStockLogger' version 2
 async function openDatabase() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open("TornStockLogger", 1);
+        const request = indexedDB.open("TornStockLogger", 2); // Increment version for schema update
+        
         request.onerror = (event) => {
             logger.error("Database error:", event.target.error);
             reject("Failed to open IndexedDB");
         };
+        
         request.onsuccess = () => {
             logger.info("Database opened successfully");
             resolve(request.result);
         };
+        
         request.onupgradeneeded = e => {
             const db = e.target.result;
-            if (!db.objectStoreNames.contains("stock_history")) {
-                const store = db.createObjectStore("stock_history", { autoIncrement: true });
-                store.createIndex("by_item", ["country", "item_id"], { unique: false });
-                logger.info("Database schema upgraded");
+            
+            // Drop old store if exists
+            if (db.objectStoreNames.contains("stock_history")) {
+                db.deleteObjectStore("stock_history");
             }
+            
+            // Create new store with improved schema
+            const store = db.createObjectStore("stock_history", { 
+                keyPath: ["timestamp", "country", "item_id"]
+            });
+            
+            // Add indices for common queries
+            store.createIndex("by_item", ["country", "item_id"], { unique: false });
+            store.createIndex("by_timestamp", "timestamp", { unique: false });
+            store.createIndex("by_country", "country", { unique: false });
+            
+            logger.info("Database schema upgraded to version 2");
         };
     });
 }
@@ -71,19 +140,37 @@ async function openDatabase() {
 async function saveStockSnapshot(db, country, item_id, quantity, timestamp, retryCount = 0) {
     const MAX_RETRIES = 3;
     try {
+        // Validate input
         if (!country || !item_id || typeof quantity === 'undefined' || !timestamp) {
             throw new Error("Invalid snapshot data");
         }
         
-        const tx = db.transaction("stock_history", "readwrite");
-        const store = tx.objectStore("stock_history");
-        await store.add({
+        // Sanitize data
+        const data = {
             country,
             item_id,
             quantity: validator.sanitizeNumber(quantity),
-            timestamp: validator.sanitizeNumber(timestamp)
-        });
+            timestamp: validator.sanitizeNumber(timestamp),
+            created_at: Date.now()
+        };
+        
+        const tx = db.transaction("stock_history", "readwrite");
+        const store = tx.objectStore("stock_history");
+        
+        // Check for duplicate entry
+        const existingKey = [data.timestamp, data.country, data.item_id];
+        const existing = await store.get(existingKey);
+        
+        if (existing) {
+            logger.info(`Updating existing snapshot for ${country}:${item_id} at ${timestamp}`);
+            await store.put(data);
+        } else {
+            await store.add(data);
+        }
+        
         await tx.done;
+        logger.info(`Successfully saved snapshot for ${country}:${item_id}`);
+        
     } catch (err) {
         if (retryCount < MAX_RETRIES) {
             logger.warn(`Retrying saveStockSnapshot (attempt ${retryCount + 1}/${MAX_RETRIES})`);
@@ -163,9 +250,7 @@ async function fetchMarketPriceForItem(itemId) {
         }
         const data = await res.json();
         
-        if (data.error) {
-            throw new Error(`API error: ${data.error.error}`);
-        }
+        apiValidator.validateTornMarketResponse(data, itemId);
 
         const type = data.itemmarket?.item?.type || null;
         itemTypeCache[itemId] = type;
@@ -201,9 +286,15 @@ async function fetchAndLogStock(requestedCountries = null) {
     try {
         await rateLimiter.waitForNextCall();
         const yataRes = await fetch("https://yata.yt/api/v1/travel/export/");
+        
+        if (!yataRes.ok) {
+            throw new Error(`YATA API HTTP error! status: ${yataRes.status}`);
+        }
+        
         yataData = await yataRes.json();
+        apiValidator.validateYataResponse(yataData);
     } catch (e) {
-        logger.error("YATA fetch failed:", e);
+        logger.error("YATA fetch/validation failed:", e);
         return;
     }
     const timestamp = yataData.timestamp || Math.floor(Date.now() / 1000);
@@ -296,6 +387,71 @@ browser.runtime.onMessage.addListener(msg => {
     manualRefreshMode = true;
     fetchAndLogStock(msg.countries);
   }
+});
+
+// Query methods for historical data
+async function getHistoricalData(db, country, item_id, startTime, endTime) {
+    try {
+        const tx = db.transaction("stock_history", "readonly");
+        const store = tx.objectStore("stock_history");
+        const index = store.index("by_item");
+        
+        const range = IDBKeyRange.bound(
+            [country, item_id, startTime], 
+            [country, item_id, endTime]
+        );
+        
+        const results = await index.getAll(range);
+        return results.sort((a, b) => a.timestamp - b.timestamp);
+    } catch (err) {
+        logger.error("Failed to fetch historical data:", err);
+        throw err;
+    }
+}
+
+async function getLatestSnapshot(db, country, item_id) {
+    try {
+        const tx = db.transaction("stock_history", "readonly");
+        const store = tx.objectStore("stock_history");
+        const index = store.index("by_item");
+        
+        const range = IDBKeyRange.bound(
+            [country, item_id, 0],
+            [country, item_id, Date.now()]
+        );
+        
+        const cursor = await index.openCursor(range, 'prev');
+        return cursor ? cursor.value : null;
+    } catch (err) {
+        logger.error("Failed to fetch latest snapshot:", err);
+        throw err;
+    }
+}
+
+// Example usage in message handler
+browser.runtime.onMessage.addListener(async (msg) => {
+    if (msg.type === "get-historical-data") {
+        const db = await openDatabase();
+        const data = await getHistoricalData(
+            db,
+            msg.country,
+            msg.itemId,
+            msg.startTime,
+            msg.endTime
+        );
+        return { data };
+    }
+    // ... existing message handlers ...
+});
+
+// Example: Get last 24 hours of data
+const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+const result = await browser.runtime.sendMessage({
+    type: "get-historical-data",
+    country: "mex",
+    itemId: 123,
+    startTime: oneDayAgo,
+    endTime: Date.now()
 });
 
 initialize();
