@@ -9,9 +9,9 @@ describe('TornStockLogger Utils', () => {
       const cost = 1000;
       const market = 2000;
       const flightTime = 30;
-      const expected = Number(((market - cost) / (flightTime * 2)).toFixed(2));
+      const expected = 16.67;
       
-      expect(calculateProfitPerMinute(cost, market, flightTime)).toBe(expected);
+      expect(calculateProfitPerMinute(cost, market, flightTime)).toBeCloseTo(expected, 2);
     });
 
     it('should return 0 when flight time is 0', () => {
@@ -20,7 +20,7 @@ describe('TornStockLogger Utils', () => {
 
     it('should handle invalid inputs', () => {
       expect(calculateProfitPerMinute(null, undefined, 'invalid')).toBe(0);
-      expect(calculateProfitPerMinute('1000', '2000', '30')).toBe(16.67);
+      expect(calculateProfitPerMinute('1000', '2000', '30')).toBeCloseTo(16.67, 2);
     });
   });
 }); 

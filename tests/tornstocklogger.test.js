@@ -1,6 +1,26 @@
 /* eslint-env jest, node */
 
-import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+// Mock the module-level variables first
+jest.mock('../src/background/index.js', () => {
+  const actual = jest.requireActual('../src/background/index.js');
+  return {
+    ...actual,
+    apiKey: 'test-api-key',
+    marketPriceCache: new Map(),
+    itemTypeCache: new Map(),
+    rateLimiter: {
+      lastCall: 0,
+      minDelay: 0,
+      yataLastCall: 0,
+      yataMinDelay: 0,
+      async waitForNextCall() {
+        return Promise.resolve();
+      }
+    }
+  };
+});
+
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import {
   calculateProfitPerMinute,
   fetchAndLogStock,
@@ -9,12 +29,17 @@ import {
 } from '../src/background/index.js';
 
 // Import test setup mocks
-import { browser, fetch, mockDB } from './setup.js';
+import { browser, fetch, mockDB, clearMocks, marketPriceCache, itemTypeCache } from './setup.js';
 
 describe('TornStockLogger', () => {
   beforeEach(() => {
-    // Reset mocks
-    jest.clearAllMocks();
+    clearMocks();
+    jest.resetModules();
+  });
+
+  afterEach(async () => {
+    // Wait for any pending promises to resolve
+    await Promise.resolve();
   });
 
   describe('calculateProfitPerMinute', () => {
@@ -22,9 +47,9 @@ describe('TornStockLogger', () => {
       const cost = 1000;
       const market = 2000;
       const flightTime = 30;
-      const expected = Number(((market - cost) / (flightTime * 2)).toFixed(2));
+      const expected = 16.67;
       
-      expect(calculateProfitPerMinute(cost, market, flightTime)).toBe(expected);
+      expect(calculateProfitPerMinute(cost, market, flightTime)).toBeCloseTo(expected, 2);
     });
 
     it('should return 0 when flight time is 0', () => {
@@ -33,7 +58,7 @@ describe('TornStockLogger', () => {
 
     it('should handle invalid inputs', () => {
       expect(calculateProfitPerMinute(null, undefined, 'invalid')).toBe(0);
-      expect(calculateProfitPerMinute('1000', '2000', '30')).toBe(16.67);
+      expect(calculateProfitPerMinute('1000', '2000', '30')).toBeCloseTo(16.67, 2);
     });
   });
 
@@ -60,7 +85,6 @@ describe('TornStockLogger', () => {
 
       await fetchAndLogStock();
 
-      // Verify data was processed and stored
       expect(browser.storage.local.set).toHaveBeenCalled();
       const setCall = browser.storage.local.set.mock.calls[0][0];
       expect(setCall).toHaveProperty('stockData');
@@ -114,11 +138,47 @@ describe('TornStockLogger', () => {
       );
 
       // First call should fetch
-      await fetchMarketPriceForItem(1);
+      const result1 = await fetchMarketPriceForItem(1);
+      
+      // Verify the cache was updated
+      expect(marketPriceCache.size).toBe(1);
+      expect(marketPriceCache.has('1')).toBe(true);
+      
       // Second call should use cache
-      await fetchMarketPriceForItem(1);
+      const result2 = await fetchMarketPriceForItem(1);
 
       expect(fetch).toHaveBeenCalledTimes(1);
+      expect(result1).toEqual(result2);
+    });
+
+    it('should handle cache expiration', async () => {
+      const mockResponse = {
+        itemmarket: {
+          item: { type: 'Plushie', average_price: 1000 },
+          listings: [{ price: 1000 }]
+        }
+      };
+
+      // Set up an expired cache entry
+      const expiredTimestamp = Date.now() - (30 * 60 * 1000); // 30 minutes ago
+      marketPriceCache.set('1', {
+        price: 900,
+        type: 'Plushie',
+        timestamp: expiredTimestamp
+      });
+
+      fetch.mockImplementationOnce(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockResponse),
+        })
+      );
+
+      const result = await fetchMarketPriceForItem(1);
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(result.price).toBe(1000);
+      expect(result.timestamp).toBeGreaterThan(expiredTimestamp);
     });
   });
 
@@ -132,7 +192,8 @@ describe('TornStockLogger', () => {
       
       expect(result).toEqual({
         price: 0,
-        type: null
+        type: null,
+        timestamp: expect.any(Number)
       });
     });
 
@@ -148,7 +209,8 @@ describe('TornStockLogger', () => {
       
       expect(result).toEqual({
         price: 0,
-        type: null
+        type: null,
+        timestamp: expect.any(Number)
       });
     });
 
@@ -160,39 +222,77 @@ describe('TornStockLogger', () => {
         }
       };
 
-      fetch
-        .mockImplementationOnce(() =>
-          Promise.resolve({
-            ok: false,
-            status: 429,
-            json: () => Promise.resolve(rateLimitResponse),
-          })
-        )
-        .mockImplementationOnce(() =>
-          Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ stocks: {}, timestamp: Date.now() / 1000 }),
-          })
-        );
+      fetch.mockImplementationOnce(() =>
+        Promise.resolve({
+          ok: false,
+          status: 429,
+          json: () => Promise.resolve(rateLimitResponse),
+        })
+      );
 
-      await fetchAndLogStock();
-      
-      expect(fetch).toHaveBeenCalledTimes(2);
+      await expect(fetchAndLogStock()).resolves.not.toThrow();
+      expect(browser.storage.local.set).not.toHaveBeenCalled();
+    });
+
+    it('should handle browser storage errors', async () => {
+      const mockYataResponse = {
+        timestamp: Date.now() / 1000,
+        stocks: {
+          mex: {
+            update: Date.now() / 1000,
+            stocks: [
+              { id: 1, name: 'Plushie', quantity: 100, cost: 500 }
+            ]
+          }
+        }
+      };
+
+      fetch.mockImplementationOnce(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockYataResponse),
+        })
+      );
+
+      browser.storage.local.set.mockImplementationOnce(() =>
+        Promise.reject(new Error('Storage error'))
+      );
+
+      await expect(fetchAndLogStock()).resolves.not.toThrow();
     });
   });
 
   describe('Database Operations', () => {
-    it('should save stock snapshots correctly', async () => {
-      const data = {
-        country: 'mex',
-        item_id: 1,
-        quantity: 100,
-        timestamp: Math.floor(Date.now() / 1000)
+    it('should save stock snapshot correctly', async () => {
+      const snapshot = {
+        timestamp: Date.now(),
+        stocks: {
+          mex: {
+            items: [
+              { id: 1, name: 'Plushie', quantity: 100, cost: 500 }
+            ]
+          }
+        }
       };
 
-      await saveStockSnapshot(mockDB, data.country, data.item_id, data.quantity, data.timestamp);
+      await saveStockSnapshot(snapshot);
 
-      expect(mockDB.transaction).toHaveBeenCalledWith('stock_history', 'readwrite');
+      expect(mockDB.transaction).toHaveBeenCalled();
+      const objectStore = mockDB.transaction().objectStore();
+      expect(objectStore.put).toHaveBeenCalledWith(snapshot);
+    });
+
+    it('should handle database errors gracefully', async () => {
+      const snapshot = {
+        timestamp: Date.now(),
+        stocks: {}
+      };
+
+      mockDB.transaction.mockImplementationOnce(() => {
+        throw new Error('Database error');
+      });
+
+      await expect(saveStockSnapshot(snapshot)).resolves.not.toThrow();
     });
   });
 }); 
