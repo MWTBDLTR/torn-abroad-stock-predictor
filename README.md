@@ -82,7 +82,6 @@ The extension will automatically track stock quantities every 30 seconds and upd
 - `npm run lint` - Lint the code
 - `npm run format` - Format code using Prettier
 - `npm test` - Run tests
-- `npm run generate-icons` - Generate extension icons
 - `npm run clean` - Clean the dist directory
 
 ### Development Flow

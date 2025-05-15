@@ -29,14 +29,6 @@
     "48": "assets/icons/icon48.png",
     "128": "assets/icons/icon128.png"
   },
-  "content_scripts": [
-    {
-      "matches": [
-        "https://www.torn.com/*"
-      ],
-      "js": []
-    }
-  ],
   "browser_specific_settings": {
     "gecko": {
       "id": "0xxzerocoolxx0@gmail.com",
