@@ -47,23 +47,22 @@ The extension will automatically track stock quantities every 30 seconds and upd
 
 1. Clone the repository:
 
-```bash
-git clone https://github.com/MWTBDLTR/torn-abroad-stock-predictor.git
-cd torn-abroad-stock-predictor
-```
+   ```bash
+   git clone https://github.com/MWTBDLTR/torn-abroad-stock-predictor.git
+   cd torn-abroad-stock-predictor
+   ```
 
 2. Install dependencies:
 
-```bash
-npm install
-```
+   ```bash
+   npm install
+   ```
 
 3. Load the extension in Firefox:
-
-- Go to `about:debugging`
-- Click "This Firefox"
-- Click "Load Temporary Add-on"
-- Select `manifest.json` from your project directory
+   - Go to `about:debugging`
+   - Click "This Firefox"
+   - Click "Load Temporary Add-on"
+   - Select `manifest.json` from your project directory
 
 ### Building
 
