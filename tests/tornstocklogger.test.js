@@ -1,32 +1,20 @@
+/* eslint-env jest, node */
+
+import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import {
+  calculateProfitPerMinute,
+  fetchAndLogStock,
+  fetchMarketPriceForItem,
+  saveStockSnapshot
+} from '../src/background/index.js';
+
+// Import test setup mocks
+import { browser, fetch, mockDB } from './setup.js';
+
 describe('TornStockLogger', () => {
   beforeEach(() => {
-    // Mock browser.storage.local
-    global.browser = {
-      storage: {
-        local: {
-          get: jest.fn(),
-          set: jest.fn(),
-        },
-      },
-      runtime: {
-        sendMessage: jest.fn(),
-      },
-    };
-
-    // Mock fetch
-    global.fetch = jest.fn();
-
-    // Mock IndexedDB
-    const mockIndexedDB = {
-      transaction: jest.fn().mockReturnValue({
-        objectStore: jest.fn().mockReturnValue({
-          put: jest.fn().mockResolvedValue(undefined),
-          add: jest.fn().mockResolvedValue(undefined)
-        }),
-        done: Promise.resolve()
-      })
-    };
-    global.mockDB = mockIndexedDB;
+    // Reset mocks
+    jest.clearAllMocks();
   });
 
   describe('calculateProfitPerMinute', () => {
@@ -34,7 +22,7 @@ describe('TornStockLogger', () => {
       const cost = 1000;
       const market = 2000;
       const flightTime = 30;
-      const expected = (market - cost) / (flightTime * 2);
+      const expected = Number(((market - cost) / (flightTime * 2)).toFixed(2));
       
       expect(calculateProfitPerMinute(cost, market, flightTime)).toBe(expected);
     });
@@ -45,7 +33,7 @@ describe('TornStockLogger', () => {
 
     it('should handle invalid inputs', () => {
       expect(calculateProfitPerMinute(null, undefined, 'invalid')).toBe(0);
-      expect(calculateProfitPerMinute('1000', '2000', '30')).toBe(16.67); // Should convert strings to numbers
+      expect(calculateProfitPerMinute('1000', '2000', '30')).toBe(16.67);
     });
   });
 
@@ -57,13 +45,13 @@ describe('TornStockLogger', () => {
           mex: {
             update: Date.now() / 1000,
             stocks: [
-              { id: 1, name: "Plushie", quantity: 100, cost: 500 }
+              { id: 1, name: 'Plushie', quantity: 100, cost: 500 }
             ]
           }
         }
       };
 
-      global.fetch.mockImplementationOnce(() =>
+      fetch.mockImplementationOnce(() =>
         Promise.resolve({
           ok: true,
           json: () => Promise.resolve(mockYataResponse),
@@ -94,7 +82,7 @@ describe('TornStockLogger', () => {
         }
       };
 
-      global.fetch.mockImplementationOnce(() =>
+      fetch.mockImplementationOnce(() =>
         Promise.resolve({
           ok: true,
           json: () => Promise.resolve(mockTornResponse),
@@ -118,7 +106,7 @@ describe('TornStockLogger', () => {
         }
       };
 
-      global.fetch.mockImplementationOnce(() =>
+      fetch.mockImplementationOnce(() =>
         Promise.resolve({
           ok: true,
           json: () => Promise.resolve(mockResponse),
@@ -136,7 +124,7 @@ describe('TornStockLogger', () => {
 
   describe('Error Handling', () => {
     it('should handle API errors gracefully', async () => {
-      global.fetch.mockImplementationOnce(() =>
+      fetch.mockImplementationOnce(() =>
         Promise.reject(new Error('Network error'))
       );
 
@@ -149,7 +137,7 @@ describe('TornStockLogger', () => {
     });
 
     it('should handle invalid data gracefully', async () => {
-      global.fetch.mockImplementationOnce(() =>
+      fetch.mockImplementationOnce(() =>
         Promise.resolve({
           ok: true,
           json: () => Promise.resolve({}),
@@ -172,7 +160,7 @@ describe('TornStockLogger', () => {
         }
       };
 
-      global.fetch
+      fetch
         .mockImplementationOnce(() =>
           Promise.resolve({
             ok: false,
@@ -195,7 +183,6 @@ describe('TornStockLogger', () => {
 
   describe('Database Operations', () => {
     it('should save stock snapshots correctly', async () => {
-      const db = global.mockDB;
       const data = {
         country: 'mex',
         item_id: 1,
@@ -203,9 +190,9 @@ describe('TornStockLogger', () => {
         timestamp: Math.floor(Date.now() / 1000)
       };
 
-      await saveStockSnapshot(db, data.country, data.item_id, data.quantity, data.timestamp);
+      await saveStockSnapshot(mockDB, data.country, data.item_id, data.quantity, data.timestamp);
 
-      expect(db.transaction).toHaveBeenCalledWith('stock_history', 'readwrite');
+      expect(mockDB.transaction).toHaveBeenCalledWith('stock_history', 'readwrite');
     });
   });
 }); 

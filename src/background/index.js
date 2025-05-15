@@ -548,80 +548,70 @@ async function initialize() {
     }
 }
 
-// Message listener to handle manual refresh and restarts
-browser.runtime.onMessage.addListener(msg => {
-  if (msg.type === "restart-collector") {
-    initialize();
-  }
-  if (msg.type === "manual-refresh") {
-    manualRefreshMode = true;
-    fetchAndLogStock(msg.countries);
-  }
-});
+import { initializeBrowserListeners } from './browser-init.js';
 
 // Query methods for historical data
 async function getHistoricalData(db, country, item_id, startTime, endTime) {
-    try {
-        const tx = db.transaction("stock_history", "readonly");
-        const store = tx.objectStore("stock_history");
-        const index = store.index("by_item");
-        
-        const range = IDBKeyRange.bound(
-            [country, item_id, startTime], 
-            [country, item_id, endTime]
-        );
-        
-        const results = await index.getAll(range);
-        return results.sort((a, b) => a.timestamp - b.timestamp);
-    } catch (err) {
-        logger.error("Failed to fetch historical data:", err);
-        throw err;
-    }
+  try {
+    const tx = db.transaction("stock_history", "readonly");
+    const store = tx.objectStore("stock_history");
+    const index = store.index("by_item");
+    
+    const range = IDBKeyRange.bound(
+      [country, item_id, startTime], 
+      [country, item_id, endTime]
+    );
+    
+    const results = await index.getAll(range);
+    return results.sort((a, b) => a.timestamp - b.timestamp);
+  } catch (err) {
+    logger.error("Failed to fetch historical data:", err);
+    throw err;
+  }
 }
 
 async function getLatestSnapshot(db, country, item_id) {
-    try {
-        const tx = db.transaction("stock_history", "readonly");
-        const store = tx.objectStore("stock_history");
-        const index = store.index("by_item");
-        
-        const range = IDBKeyRange.bound(
-            [country, item_id, 0],
-            [country, item_id, Date.now()]
-        );
-        
-        const cursor = await index.openCursor(range, 'prev');
-        return cursor ? cursor.value : null;
-    } catch (err) {
-        logger.error("Failed to fetch latest snapshot:", err);
-        throw err;
-    }
+  try {
+    const tx = db.transaction("stock_history", "readonly");
+    const store = tx.objectStore("stock_history");
+    const index = store.index("by_item");
+    
+    const range = IDBKeyRange.bound(
+      [country, item_id, 0],
+      [country, item_id, Date.now()]
+    );
+    
+    const cursor = await index.openCursor(range, 'prev');
+    return cursor ? cursor.value : null;
+  } catch (err) {
+    logger.error("Failed to fetch latest snapshot:", err);
+    throw err;
+  }
 }
 
-// Example usage in message handler
-browser.runtime.onMessage.addListener(async (msg) => {
-    if (msg.type === "get-historical-data") {
-        const db = await openDatabase();
-        const data = await getHistoricalData(
-            db,
-            msg.country,
-            msg.itemId,
-            msg.startTime,
-            msg.endTime
-        );
-        return { data };
-    }
-    // ... existing message handlers ...
-});
+// Export functions for testing
+export {
+    calculateProfitPerMinute,
+    fetchAndLogStock,
+    fetchMarketPriceForItem,
+    saveStockSnapshot,
+    // Export other utilities that might be needed for testing
+    validator,
+    apiValidator,
+    stockAnalyzer,
+    rateLimiter,
+    openDatabase,
+    getHistoricalData,
+    getLatestSnapshot,
+    initialize
+};
 
-// Example: Get last 24 hours of data
-const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
-const result = await browser.runtime.sendMessage({
-    type: "get-historical-data",
-    country: "mex",
-    itemId: 123,
-    startTime: oneDayAgo,
-    endTime: Date.now()
-});
-
-initialize();
+// Only initialize if we're in a browser environment
+if (typeof browser !== 'undefined') {
+  (async () => {
+    await initialize();
+    initializeBrowserListeners(initialize);
+  })().catch(err => {
+    console.error('Failed to initialize:', err);
+  });
+}

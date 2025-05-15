@@ -3,8 +3,9 @@
   "version": "2.0.0",
   "description": "A Firefox extension that helps predict foreign stock quantities in Torn City",
   "main": "src/background/index.js",
+  "type": "module",
   "scripts": {
-    "test": "jest",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
     "build": "web-ext build --source-dir src --artifacts-dir dist",
     "lint": "eslint src/**/*.js && web-ext lint",
     "start": "web-ext run --source-dir src",
@@ -31,6 +32,7 @@
   },
   "homepage": "https://github.com/MWTBDLTR/torn-abroad-stock-predictor#readme",
   "devDependencies": {
+    "cross-env": "^7.0.3",
     "eslint": "^8.56.0",
     "jest": "^29.7.0",
     "prettier": "^3.2.5",
