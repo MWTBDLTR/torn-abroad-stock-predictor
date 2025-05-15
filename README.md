@@ -4,7 +4,7 @@ A Firefox extension that helps predict foreign stock quantities in Torn City by 
 
 ## Project Structure
 
-```
+```plaintext
 torn-abroad-stock-predictor/
 ├── src/                    # Source code directory
 │   ├── background/         # Background scripts
@@ -59,7 +59,7 @@ The extension will automatically track stock quantities every 30 seconds and upd
 - npm (v7 or higher)
 - Firefox Developer Edition (recommended for development)
 
-### Installation
+### Development Setup
 
 1. Clone the repository:
 
