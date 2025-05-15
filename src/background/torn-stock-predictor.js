@@ -133,6 +133,21 @@ const COUNTRY_CODES = {
     sou: "South Africa"
 };
 
+// Hardcoded flight times in minutes for each country
+const FLIGHT_TIMES = {
+    mex: 36,
+    cay: 50,
+    can: 58,
+    haw: 188,
+    uni: 222,
+    arg: 234,
+    swi: 246,
+    jap: 316,
+    chi: 338,
+    uae: 380,
+    sou: 416
+};
+
 // Enhanced stock analysis utilities
 const stockAnalyzer = {
     calculateTrend(historicalData, timeframeHours = 24) {
@@ -176,36 +191,32 @@ const stockAnalyzer = {
 async function openDatabase() {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open("TornStockLogger", 2); // Increment version for schema update
-        
         request.onerror = (event) => {
             logger.error("Database error:", event.target.error);
             reject("Failed to open IndexedDB");
         };
-        
         request.onsuccess = () => {
             logger.info("Database opened successfully");
             resolve(request.result);
         };
-        
         request.onupgradeneeded = e => {
             const db = e.target.result;
-            
-            // Drop old store if exists
-            if (db.objectStoreNames.contains("stock_history")) {
-                db.deleteObjectStore("stock_history");
+            // Only create or upgrade the object store if it does not exist
+            // or if a breaking schema change is required in the future
+            // For v2, only create if missing (do not delete existing data)
+            if (!db.objectStoreNames.contains("stock_history")) {
+                const store = db.createObjectStore("stock_history", { 
+                    keyPath: ["timestamp", "country", "item_id"]
+                });
+                // Add indices for common queries
+                store.createIndex("by_item", ["country", "item_id"], { unique: false });
+                store.createIndex("by_timestamp", "timestamp", { unique: false });
+                store.createIndex("by_country", "country", { unique: false });
+                logger.info("Database schema created (v2)");
+            } else {
+                // For future migrations, add migration logic here
+                logger.info("Database schema upgrade: no destructive changes (v2)");
             }
-            
-            // Create new store with improved schema
-            const store = db.createObjectStore("stock_history", { 
-                keyPath: ["timestamp", "country", "item_id"]
-            });
-            
-            // Add indices for common queries
-            store.createIndex("by_item", ["country", "item_id"], { unique: false });
-            store.createIndex("by_timestamp", "timestamp", { unique: false });
-            store.createIndex("by_country", "country", { unique: false });
-            
-            logger.info("Database schema upgraded to version 2");
         };
     });
 }
@@ -263,8 +274,7 @@ function calculateProfitPerMinute(cost, market, flightTime) {
     flightTime = validator.sanitizeNumber(flightTime);
     
     const profit = market - cost;
-    const totalFlightTime = flightTime * 2;
-    return totalFlightTime > 0 ? profit / totalFlightTime : 0;
+    return flightTime > 0 ? profit / flightTime : 0;
 }
 
 // Cache for static item metadata fetched once at initialization
@@ -330,9 +340,9 @@ async function loadStaticMetadata() {
                 if (!item.id || !item.name) continue;
                 
                 const key = `${country}_${item.id}`;
-                const flight_time = validator.sanitizeNumber(item.flight_time);
+                const flight_time = FLIGHT_TIMES[country] || 0;
                 if (!flight_time) {
-                    logger.warn(`Missing or invalid flight time for item ${item.id} in ${country}`);
+                    logger.warn(`Missing or invalid flight time for country ${country}`);
                 }
                 
                 staticItemData[key] = {
@@ -427,15 +437,54 @@ async function fetchMarketPriceForItem(itemId) {
     }
 }
 
+// Fetch all item types from Torn API in one call
+async function fetchAllItemTypes() {
+    if (!apiKey) {
+        logger.warn("No API key available for fetching all item types");
+        return {};
+    }
+    try {
+        await rateLimiter.waitForNextCall();
+        const res = await fetch(`https://api.torn.com/torn/?selections=items&key=${apiKey}`);
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        const data = await res.json();
+        if (data.error) throw new Error(data.error.error);
+
+        const typeCache = {};
+        for (const [id, item] of Object.entries(data.items || {})) {
+            typeCache[id] = item.type;
+        }
+        logger.info("Fetched all item types from Torn API");
+        return typeCache;
+    } catch (err) {
+        logger.error("Failed to fetch all item types:", err);
+        return {};
+    }
+}
+
+// Fetch and cache all market prices for relevant items (Plushie/Flower)
+async function fetchAndCacheAllMarketPrices() {
+    if (!apiKey) {
+        logger.warn("No API key available for fetching market prices");
+        return;
+    }
+    const itemIds = Object.keys(itemTypeCache).filter(
+        id => itemTypeCache[id] === 'Plushie' || itemTypeCache[id] === 'Flower'
+    );
+    for (const itemId of itemIds) {
+        await fetchMarketPriceForItem(itemId);
+    }
+    logger.info('Initial market prices fetched and cached.');
+}
+
 // Update fetchAndLogStock with YATA error handling
 async function fetchAndLogStock(requestedCountries = null) {
     const db = await openDatabase();
     let yataData = {};
-    
     try {
         await rateLimiter.waitForNextCall(true);
         const yataRes = await fetch("https://yata.yt/api/v1/travel/export/");
-        
+
         if (!yataRes.ok) {
             const errorData = await yataRes.json();
             if (errorData.error) {
@@ -443,23 +492,19 @@ async function fetchAndLogStock(requestedCountries = null) {
             }
             throw new Error(`YATA API HTTP error! status: ${yataRes.status}`);
         }
-        
+
         yataData = await yataRes.json();
         apiValidator.validateYataResponse(yataData);
-        
-        // Get historical data for trend analysis
+
+        // Define timestamp as soon as yataData is available
         const timestamp = yataData.timestamp || Math.floor(Date.now() / 1000);
-        const oneDayAgo = timestamp - (24 * 60 * 60);
-        
+
         for (const [country, data] of Object.entries(yataData.stocks || {})) {
             if (requestedCountries && !requestedCountries.includes(country)) continue;
-            
             for (const item of data.stocks || []) {
-                const historicalData = await getHistoricalData(db, country, item.id, oneDayAgo, timestamp);
+                const historicalData = await getHistoricalData(db, country, item.id, timestamp - (24 * 60 * 60), timestamp);
                 const trend = stockAnalyzer.calculateTrend(historicalData);
                 const restock = stockAnalyzer.predictRestock(historicalData);
-                
-                // Add trend and restock prediction to the stored data
                 await saveStockSnapshot(db, country, item.id, item.quantity, timestamp, {
                     trend,
                     restock,
@@ -467,56 +512,100 @@ async function fetchAndLogStock(requestedCountries = null) {
                 });
             }
         }
-        
+
+        const dynamicData = {};
+        const itemIdsToFetch = new Set();
+        for (const [country, data] of Object.entries(yataData.stocks || {})) {
+            if (requestedCountries && !requestedCountries.includes(country)) continue;
+            for (const item of data.stocks || []) {
+                const key = `${country}_${item.id}`;
+                dynamicData[key] = { quantity: item.quantity };
+                // Only fetch price if manual refresh
+                if (manualRefreshMode) itemIdsToFetch.add(item.id);
+            }
+        }
+
+        const priceMap = {};
+        const itemIds = Array.from(itemIdsToFetch);
+        for (let i = 0; i < itemIds.length; i++) {
+            priceMap[itemIds[i]] = await fetchMarketPriceForItem(itemIds[i]);
+        }
+
+        const result = {};
+        for (const [key, dyn] of Object.entries(dynamicData)) {
+            const meta = staticItemData[key];
+            if (!meta) {
+                logger.warn('No meta for key', key);
+                continue;
+            }
+            let market_price = 0;
+            if (manualRefreshMode) {
+                const info = priceMap[meta.id] || {};
+                market_price = info.price ?? 0;
+                // Save to IndexedDB for persistence
+                try {
+                    const tx = db.transaction("stock_history", "readwrite");
+                    const store = tx.objectStore("stock_history");
+                    // Use a special country code for market price snapshots
+                    const priceKey = [timestamp, 'MARKET', meta.id];
+                    await store.put({
+                        country: 'MARKET',
+                        item_id: meta.id,
+                        quantity: market_price, // Store price in quantity field for simplicity
+                        timestamp,
+                        created_at: Date.now(),
+                        type: 'market_price'
+                    });
+                    await tx.done;
+                } catch (err) {
+                    logger.warn('Failed to save market price to DB:', err);
+                }
+            } else {
+                // Try to get the latest market price from IndexedDB
+                try {
+                    const latestPrice = await getLatestSnapshot(db, 'MARKET', meta.id);
+                    if (latestPrice && typeof latestPrice.quantity === 'number') {
+                        market_price = latestPrice.quantity;
+                    } else if (marketPriceCache[meta.id]) {
+                        market_price = marketPriceCache[meta.id].price ?? 0;
+                    }
+                } catch (err) {
+                    logger.warn('Failed to load market price from DB:', err);
+                    if (marketPriceCache[meta.id]) {
+                        market_price = marketPriceCache[meta.id].price ?? 0;
+                    }
+                }
+            }
+            const item_type = itemTypeCache[meta.id];
+            if (typeof item_type === "undefined") {
+                logger.info(`Item ${meta.id} (${meta.name}) type: UNKNOWN`);
+                logger.info(`Skipping item ${meta.id} (${meta.name}) because type is unknown`);
+                continue;
+            }
+            if (item_type !== "Plushie" && item_type !== "Flower") {
+                continue;
+            }
+            const ppm = calculateProfitPerMinute(meta.cost, market_price, meta.flight_time);
+            await saveStockSnapshot(db, meta.country, meta.id, dyn.quantity, timestamp);
+
+            if (!result[meta.country]) result[meta.country] = [];
+            result[meta.country].push({
+                ...meta,
+                quantity: dyn.quantity,
+                market_price,
+                profit_per_minute: ppm,
+                timestamp,
+                type: item_type
+            });
+        }
+
+        await browser.storage.local.set({ stockData: result, stockDataVersion: Date.now() });
+        console.log("Stock data updated and saved.");
+        manualRefreshMode = false;
     } catch (e) {
         logger.error("YATA fetch/validation failed:", e);
         throw e; // Propagate error for better handling
     }
-    
-    const dynamicData = {};
-    const itemIdsToFetch = new Set();
-    for (const [country, data] of Object.entries(yataData.stocks || {})) {
-        if (requestedCountries && !requestedCountries.includes(country)) continue;
-        for (const item of data.stocks || []) {
-            const key = `${country}_${item.id}`;
-            dynamicData[key] = { quantity: item.quantity };
-            if (manualRefreshMode) itemIdsToFetch.add(item.id);
-        }
-    }
-
-    const priceMap = {};
-    const itemIds = Array.from(itemIdsToFetch);
-    for (let i = 0; i < itemIds.length; i++) {
-        priceMap[itemIds[i]] = await fetchMarketPriceForItem(itemIds[i]);
-        // No need for additional delay since fetchMarketPriceForItem handles rate limiting
-    }
-
-    const result = {};
-    for (const [key, dyn] of Object.entries(dynamicData)) {
-        const meta = staticItemData[key];
-        if (!meta) continue;
-        const info = priceMap[meta.id] || {};
-        const market_price = info.price ?? 0;
-        const item_type = info.type ?? itemTypeCache[meta.id];
-        if (item_type !== "Plushie" && item_type !== "Flower") continue;
-
-        const ppm = calculateProfitPerMinute(meta.cost, market_price, meta.flight_time);
-        await saveStockSnapshot(db, meta.country, meta.id, dyn.quantity, timestamp);
-
-        if (!result[meta.country]) result[meta.country] = [];
-        result[meta.country].push({
-            ...meta,
-            quantity: dyn.quantity,
-            market_price,
-            profit_per_minute: ppm,
-            timestamp,
-            type: item_type
-        });
-    }
-
-    await browser.storage.local.set({ stockData: result });
-    console.log("Stock data updated and saved.");
-    manualRefreshMode = false;
 }
 
 // Initializes the extension: loads API key, metadata, and starts periodic quantity-only fetching
@@ -531,7 +620,15 @@ async function initialize() {
             return; // Do not proceed further
         }
 
+        // Fetch all item types if cache is empty
+        if (!itemTypeCache || Object.keys(itemTypeCache).length === 0) {
+            itemTypeCache = await fetchAllItemTypes();
+            await browser.storage.local.set({ itemTypeCache });
+        }
+
         await loadStaticMetadata();
+        // Fetch and cache all market prices for relevant items (Plushie/Flower) once at startup
+        await fetchAndCacheAllMarketPrices();
         await fetchAndLogStock();
 
         // Remove setInterval/clearInterval logic
@@ -561,8 +658,8 @@ async function getHistoricalData(db, country, item_id, startTime, endTime) {
       [country, item_id, endTime]
     );
     
-    const results = await index.getAll(range);
-    return results.sort((a, b) => a.timestamp - b.timestamp);
+    const results = await index.getAll(range) || [];
+    return Array.isArray(results) ? results.sort((a, b) => a.timestamp - b.timestamp) : [];
   } catch (err) {
     logger.error("Failed to fetch historical data:", err);
     throw err;
@@ -602,8 +699,18 @@ export {
     openDatabase,
     getHistoricalData,
     getLatestSnapshot,
-    initialize
+    initialize,
+    // Export for manual refresh
+    logger,
+    manualRefreshMode,
+    // Add this function to allow setting manualRefreshMode
+    setManualRefreshMode
 };
+
+// Add the function definition before the export block
+function setManualRefreshMode(value) {
+    manualRefreshMode = value;
+}
 
 // Listen for alarms to trigger periodic fetch
 if ((typeof browser !== 'undefined' && browser.alarms) || (typeof chrome !== 'undefined' && chrome.alarms)) {
