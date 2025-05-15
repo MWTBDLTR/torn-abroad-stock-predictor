@@ -2,6 +2,22 @@
 
 A Firefox extension that helps predict foreign stock quantities in Torn City by analyzing historical data from the YATA API.
 
+## Project Structure
+
+```
+torn-abroad-stock-predictor/
+├── src/                    # Source code directory
+│   ├── background/         # Background scripts
+│   ├── popup/             # Popup related files
+│   └── content/           # Content scripts
+├── assets/                # Static assets
+│   └── icons/            # Icon files
+├── dist/                  # Build output directory
+├── tests/                # Test files
+├── scripts/              # Build/utility scripts
+└── docs/                 # Documentation
+```
+
 ## Features
 
 - Real-time stock quantity tracking
@@ -39,11 +55,11 @@ The extension will automatically track stock quantities every 30 seconds and upd
 
 ### Prerequisites
 
-- Firefox Browser
-- Node.js (for development tools)
-- Basic understanding of JavaScript and browser extensions
+- Node.js (v14 or higher)
+- npm (v7 or higher)
+- Firefox Developer Edition (recommended for development)
 
-### Setup
+### Installation
 
 1. Clone the repository:
 
@@ -58,17 +74,25 @@ The extension will automatically track stock quantities every 30 seconds and upd
    npm install
    ```
 
-3. Load the extension in Firefox:
-   - Go to `about:debugging`
-   - Click "This Firefox"
-   - Click "Load Temporary Add-on"
-   - Select `manifest.json` from your project directory
+### Available Scripts
 
-### Building
+- `npm start` - Run the extension in Firefox
+- `npm run dev` - Run the extension in Firefox Developer Edition
+- `npm run build` - Build the extension for production
+- `npm run lint` - Lint the code
+- `npm run format` - Format code using Prettier
+- `npm test` - Run tests
+- `npm run generate-icons` - Generate extension icons
+- `npm run clean` - Clean the dist directory
 
-```bash
-npm run build
-```
+### Development Flow
+
+1. Make your changes in the `src` directory
+2. Run `npm run format` to format your code
+3. Run `npm run lint` to check for issues
+4. Run `npm test` to ensure tests pass
+5. Use `npm run dev` to test in Firefox Developer Edition
+6. When ready, use `npm run build` to create the production build
 
 ## License
 
