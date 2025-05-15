@@ -1,4 +1,6 @@
 // Global variables to store API key, fetch interval, cached item types, and manual refresh flag
+import { initializeBrowserListeners } from './browser-init.js';
+
 let apiKey = null;
 let fetchInterval = null;
 let itemTypeCache = {};
@@ -547,8 +549,6 @@ async function initialize() {
         logger.error("Initialization failed:", err);
     }
 }
-
-import { initializeBrowserListeners } from './browser-init.js';
 
 // Query methods for historical data
 async function getHistoricalData(db, country, item_id, startTime, endTime) {
