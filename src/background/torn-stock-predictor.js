@@ -527,7 +527,8 @@ async function initialize() {
         itemTypeCache = data.itemTypeCache || {};
 
         if (!apiKey) {
-            throw new Error("API key is missing");
+            logger.warn("API key is missing. Extension is idle until a key is provided.");
+            return; // Do not proceed further
         }
 
         await loadStaticMetadata();
@@ -609,6 +610,10 @@ if ((typeof browser !== 'undefined' && browser.alarms) || (typeof chrome !== 'un
     const alarms = (typeof browser !== 'undefined' && browser.alarms) ? browser.alarms : chrome.alarms;
     alarms.onAlarm.addListener(alarm => {
         if (alarm.name === "periodicFetch") {
+            if (!apiKey) {
+                logger.warn("Periodic fetch skipped: API key is missing.");
+                return;
+            }
             manualRefreshMode = false; // ensure no price fetch
             fetchAndLogStock().catch(err => logger.error("Periodic fetch failed:", err));
         }

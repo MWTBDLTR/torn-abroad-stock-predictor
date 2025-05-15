@@ -73,27 +73,30 @@ document.addEventListener("DOMContentLoaded", async () => {
         // If an API key was previously saved, populate
         if (tornApiKey) elements.apiKeyInput.value = tornApiKey;
 
+        let keyIsValid = false;
+
         // Function to validate the Torn API key by querying the Torn user endpoint
         async function validateAndSaveKey() {
             try {
                 UIState.setLoading(true);
                 elements.keyStatus.textContent = "Validating API key...";
-                
+                keyIsValid = false;
                 const value = elements.apiKeyInput.value.trim();
                 if (!value) {
                     UIState.showError("Please enter an API key");
+                    elements.keyStatus.textContent = "API key not validated yet.";
                     return;
                 }
 
                 const res = await fetch(`https://api.torn.com/user/?selections=basic&key=${value}`);
                 if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-                
                 const data = await res.json();
                 if (data.error) throw new Error(data.error.error);
 
                 if (data.player_id) {
                     await browser.storage.local.set({ tornApiKey: value });
                     elements.keyStatus.textContent = "API key is valid and saved locally.";
+                    keyIsValid = true;
                     elements.configForm.style.display = "none";
                     console.log("API key validated and saved.");
                     browser.runtime.sendMessage({ type: "restart-collector" });
@@ -103,6 +106,8 @@ document.addEventListener("DOMContentLoaded", async () => {
             } catch (e) {
                 UIState.showError(`Error: ${e.message}`);
                 elements.keyStatus.textContent = "Error validating key.";
+                keyIsValid = false;
+                elements.configForm.style.display = "flex";
             } finally {
                 UIState.setLoading(false);
             }
@@ -131,8 +136,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         // If we already have a valid key, hide the API key form
         if (tornApiKey) {
-            elements.configForm.style.display = "none";
-            elements.keyStatus.textContent = "";
+            elements.configForm.style.display = "flex";
+            elements.keyStatus.textContent = "API key not validated yet.";
+        } else {
+            elements.configForm.style.display = "flex";
+            elements.keyStatus.textContent = "API key not validated yet.";
         }
 
         // If no stock data is available, show a placeholder message
