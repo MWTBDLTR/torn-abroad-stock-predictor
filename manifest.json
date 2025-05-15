@@ -11,7 +11,7 @@
     "https://api.torn.com/*"
   ],
   "background": {
-    "service_worker": "src/background/torn-stock-predictor.js",
+    "scripts": ["src/background/torn-stock-predictor.js"],
     "type": "module"
   },
   "action": {
