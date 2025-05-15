@@ -533,17 +533,15 @@ async function initialize() {
         await loadStaticMetadata();
         await fetchAndLogStock();
 
-        if (fetchInterval) {
-            clearInterval(fetchInterval);
-            logger.info("Cleared existing fetch interval");
+        // Remove setInterval/clearInterval logic
+        // Set up periodic alarm (every 30s)
+        const alarms = (typeof browser !== 'undefined' && browser.alarms) ? browser.alarms : (typeof chrome !== 'undefined' ? chrome.alarms : null);
+        if (alarms) {
+            alarms.clear("periodicFetch", () => {
+                alarms.create("periodicFetch", { periodInMinutes: 0.5 }); // 30 seconds
+            });
         }
 
-        // Periodic fetch every 30s (only quantity; prices disabled)
-        fetchInterval = setInterval(() => {
-            manualRefreshMode = false;  // ensure no price fetch
-            fetchAndLogStock().catch(err => logger.error("Periodic fetch failed:", err));
-        }, 30000);
-        
         logger.info("Initialization completed successfully");
     } catch (err) {
         logger.error("Initialization failed:", err);
@@ -605,6 +603,17 @@ export {
     getLatestSnapshot,
     initialize
 };
+
+// Listen for alarms to trigger periodic fetch
+if ((typeof browser !== 'undefined' && browser.alarms) || (typeof chrome !== 'undefined' && chrome.alarms)) {
+    const alarms = (typeof browser !== 'undefined' && browser.alarms) ? browser.alarms : chrome.alarms;
+    alarms.onAlarm.addListener(alarm => {
+        if (alarm.name === "periodicFetch") {
+            manualRefreshMode = false; // ensure no price fetch
+            fetchAndLogStock().catch(err => logger.error("Periodic fetch failed:", err));
+        }
+    });
+}
 
 // Only initialize if we're in a browser environment
 if (typeof browser !== 'undefined') {

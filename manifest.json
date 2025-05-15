@@ -1,20 +1,20 @@
 {
-  "manifest_version": 2,
+  "manifest_version": 3,
   "name": "Torn Foreign Stock Predictor",
   "version": "2.0",
   "description": "Displays projected foreign stock restocks based on YATA API data.",
   "permissions": [
-    "storage",
+    "storage"
+  ],
+  "host_permissions": [
     "https://yata.yt/*",
     "https://api.torn.com/*"
   ],
   "background": {
-    "scripts": [
-      "src/background/index.js"
-    ],
-    "persistent": true
+    "service_worker": "src/background/torn-stock-predictor.js",
+    "type": "module"
   },
-  "browser_action": {
+  "action": {
     "default_popup": "src/popup/popup.html",
     "default_icon": {
       "16": "assets/icons/icon16.png",
@@ -32,7 +32,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "0xxzerocoolxx0@gmail.com",
-      "strict_min_version": "57.0"
+      "strict_min_version": "109.0"
     }
   },
   "author": "MrChurchh [3654415]"

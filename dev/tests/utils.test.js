@@ -1,7 +1,7 @@
 /* eslint-env jest, node */
 
 import { jest, describe, it, expect } from '@jest/globals';
-import { calculateProfitPerMinute } from '../src/background/index.js';
+import { calculateProfitPerMinute } from '../src/background/torn-stock-predictor.js';
 
 describe('TornStockLogger Utils', () => {
   describe('calculateProfitPerMinute', () => {

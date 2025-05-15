@@ -1,8 +1,8 @@
 /* eslint-env jest, node */
 
 // Mock the module-level variables first
-jest.mock('../src/background/index.js', () => {
-  const actual = jest.requireActual('../src/background/index.js');
+jest.mock('../src/background/torn-stock-predictor.js', () => {
+  const actual = jest.requireActual('../src/background/torn-stock-predictor.js');
   return {
     ...actual,
     apiKey: 'test-api-key',
@@ -26,7 +26,7 @@ import {
   fetchAndLogStock,
   fetchMarketPriceForItem,
   saveStockSnapshot
-} from '../src/background/index.js';
+} from '../src/background/torn-stock-predictor.js';
 
 // Import test setup mocks
 import { browser, fetch, mockDB, clearMocks, marketPriceCache, itemTypeCache } from './setup.js';
