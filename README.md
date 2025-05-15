@@ -19,6 +19,7 @@ A Firefox extension that helps predict foreign stock quantities in Torn City by 
 3. Follow the installation prompts
 
 Or install manually:
+
 1. Download the latest release
 2. Go to `about:debugging` in Firefox
 3. Click "This Firefox"
@@ -37,29 +38,35 @@ The extension will automatically track stock quantities every 30 seconds and upd
 ## Development
 
 ### Prerequisites
+
 - Firefox Browser
 - Node.js (for development tools)
 - Basic understanding of JavaScript and browser extensions
 
 ### Setup
+
 1. Clone the repository:
+
 ```bash
-git clone https://github.com/yourusername/torn-abroad-stock-predictor.git
+git clone https://github.com/MWTBDLTR/torn-abroad-stock-predictor.git
 cd torn-abroad-stock-predictor
 ```
 
 2. Install dependencies:
+
 ```bash
 npm install
 ```
 
 3. Load the extension in Firefox:
+
 - Go to `about:debugging`
 - Click "This Firefox"
 - Click "Load Temporary Add-on"
 - Select `manifest.json` from your project directory
 
 ### Building
+
 ```bash
 npm run build
 ```
@@ -78,6 +85,7 @@ See [LICENSE](LICENSE) for full details.
 5. Open a Pull Request
 
 By submitting a pull request, you agree that:
+
 - Your contributions are licensed under GPL v3
 - All existing copyright headers remain intact
 - You include your name/email in `NOTICE.md` for any significant addition
@@ -91,13 +99,15 @@ By submitting a pull request, you agree that:
 ## Support
 
 For support, please:
-1. Check the [Issues](https://github.com/yourusername/torn-abroad-stock-predictor/issues) page
+
+1. Check the [Issues](https://github.com/MWTBDLTR/torn-abroad-stock-predictor/issues) page
 2. Create a new issue if needed
 3. Contact MrChurchh [3654415] in Torn
 
 ## Changelog
 
 ### v2.0
+
 - Complete UI redesign
 - Added market price tracking
 - Improved data accuracy
@@ -105,6 +115,7 @@ For support, please:
 - Added country filters
 
 ### v1.0
+
 - Initial release
 - Basic stock tracking
 - YATA API integration
